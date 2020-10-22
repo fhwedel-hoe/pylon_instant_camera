@@ -37,7 +37,7 @@ class PylonUSBCamera {
             delete camera;
             Pylon::PylonTerminate(); 
         }
-    sensor_msgs::Image grab_frame() {
+     Pylon::CGrabResultPtr & grab_frame() {
         if (camera->IsGrabbing())
         {
             // Wait for an image and then retrieve it. A timeout of 1000 ms is used.
@@ -45,19 +45,7 @@ class PylonUSBCamera {
             // Image grabbed successfully?
             if (ptrGrabResult->GrabSucceeded())
             {
-                // Access the image data.
-                const uint8_t *pImageBuffer = (uint8_t *) ptrGrabResult->GetBuffer();
-                const size_t payloadSize = ptrGrabResult->GetPayloadSize();
-
-                // TODO: return ptrGrabResult, create sensor_msgs::Image envelope outside this function 
-                sensor_msgs::Image img_raw_msg_;
-                img_raw_msg_.header.stamp = ros::Time::now(); 
-                img_raw_msg_.width = ptrGrabResult->GetWidth();
-                img_raw_msg_.height = ptrGrabResult->GetHeight();
-                img_raw_msg_.encoding = sensor_msgs::image_encodings::RGB8; // TODO: check if this actually matches the camera settings
-                img_raw_msg_.step = img_raw_msg_.width * 3; // TODO: see above
-                img_raw_msg_.data.assign(pImageBuffer,pImageBuffer+payloadSize);
-                return img_raw_msg_;
+                return ptrGrabResult;
             }
             else
             {
@@ -72,6 +60,20 @@ class PylonUSBCamera {
         }
     }
 };
+
+sensor_msgs::Image pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
+    // Access the image data.
+    const uint8_t *pImageBuffer = (uint8_t *) ptrGrabResult->GetBuffer();
+    const size_t payloadSize = ptrGrabResult->GetPayloadSize();
+    sensor_msgs::Image img_raw_msg;
+    img_raw_msg.header.stamp = ros::Time::now(); 
+    img_raw_msg.width = ptrGrabResult->GetWidth();
+    img_raw_msg.height = ptrGrabResult->GetHeight();
+    img_raw_msg.encoding = sensor_msgs::image_encodings::RGB8; // TODO: check if this actually matches the camera settings
+    img_raw_msg.step = img_raw_msg.width * 3; // TODO: see above
+    img_raw_msg.data.assign(pImageBuffer,pImageBuffer+payloadSize);
+    return img_raw_msg;
+    }
 
 int main(int argc, char **argv)
 {
@@ -92,7 +94,7 @@ int main(int argc, char **argv)
     sensor_msgs::CameraInfo cam_info = cim.getCameraInfo();
     PylonUSBCamera camera;
     while(ros::ok()) {
-        sensor_msgs::Image img = camera.grab_frame();
+        sensor_msgs::Image img = pylon_result_to_image_message(camera.grab_frame());
         cam_info.header.stamp = img.header.stamp;
         publisher.publish(img, cam_info);
         ros::spinOnce();
