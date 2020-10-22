@@ -80,7 +80,15 @@ int main(int argc, char **argv)
     image_transport::ImageTransport it(nh);
     image_transport::CameraPublisher publisher = it.advertiseCamera("image_raw", 1);
     camera_info_manager::CameraInfoManager cim(nh);
-    cim.loadCameraInfo("package://ros_adas2019/config/front_camera_calibration.yaml"); // TODO: do not hardcode
+    std::string camera_info_url;
+    if (nh.getParam("camera_info_url", camera_info_url))
+    {
+        cim.loadCameraInfo(camera_info_url);
+    }
+    else
+    {
+        ROS_WARN("camera_info_url not supplied in configuration. Camera info will be unavailable. Rectification is not possible.");
+    }
     sensor_msgs::CameraInfo cam_info = cim.getCameraInfo();
     PylonUSBCamera camera;
     while(ros::ok()) {
