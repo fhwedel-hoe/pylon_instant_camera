@@ -1,56 +1,44 @@
-cmake_minimum_required(VERSION 3.1)
-project(pylon_usb-instant-camera)
+cmake_minimum_required(VERSION 3.5)
+project(pylon_usb_instant_camera)
 
-## Compile as C++17, supported in ROS Kinetic and newer
 set (CMAKE_CXX_STANDARD 17)
 
-## Find catkin macros and libraries
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  std_msgs
-  image_transport
-  camera_info_manager
-)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-## System dependencies are found with CMake's conventions
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(image_transport REQUIRED)
+find_package(camera_info_manager QUIET) # in development at https://github.com/ros-perception/image_common/tree/ros2
+if (NOT ${camera_info_manager_FOUND})
+    message(WARNING "image_transport not found. Rectification via camera info parameters will not be possible.")
+endif()
+
 find_package(Pylon QUIET)
 if (NOT ${Pylon_FOUND})
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindPylon.cmake")
 endif()
+if (NOT ${Pylon_FOUND})
+    message(FATAL "Unable to find Basler Pylon SDK.")
+endif()
 
-###################################
-## catkin specific configuration ##
-###################################
-catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES pylon-ros-camera-freerun
-  CATKIN_DEPENDS roscpp std_msgs image_transport
-#  DEPENDS system_lib
-)
-
-###########
-## Build ##
-###########
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
-include_directories(
-# include
-  ${catkin_INCLUDE_DIRS}
+add_executable(node src/main.cpp)
+target_include_directories(node PUBLIC
   ${Pylon_INCLUDE_DIRS}
 )
-
-## Declare a C++ executable
-## With catkin_make all packages are built within a single CMake context
-## The recommended prefix ensures that target names across packages don't collide
-add_executable(${PROJECT_NAME}_node src/main.cpp)
-
-## Add cmake target dependencies of the executable
-## same as for the library above
-add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_node
-  ${catkin_LIBRARIES}
+target_link_libraries(node
   ${Pylon_LIBRARIES}
 )
+ament_target_dependencies(node 
+	rclcpp
+	image_transport
+	sensor_msgs
+)
+
+install(TARGETS 
+  node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+ament_package()

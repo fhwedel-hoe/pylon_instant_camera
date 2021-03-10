@@ -1,23 +1,32 @@
-#include <ros/ros.h>
-#include <image_transport/image_transport.h>
-#include <sensor_msgs/image_encodings.h>
+#include <rclcpp/rclcpp.hpp>
+#include <image_transport/image_transport.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wpedantic"
+#pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #include <pylon/PylonIncludes.h>
 #include <pylon/usb/BaslerUsbInstantCamera.h>
-#include <camera_info_manager/camera_info_manager.h>
+#pragma GCC diagnostic pop
+#ifdef CAMERA_INFO_MANAGER
+#error "This was never adjusted for ros2 as I did not have a camera_info_manager at hand."
+#include <camera_info_manager/camera_info_manager.hpp>
+#endif
 
 class PylonUSBCamera {
     private:
         // This smart pointer will receive the grab result data.
         Pylon::CGrabResultPtr ptrGrabResult;
         Pylon::CBaslerUsbInstantCamera * camera;
+        std::shared_ptr<rclcpp::Node> node;
     public:
-        PylonUSBCamera() {
+        PylonUSBCamera(std::shared_ptr<rclcpp::Node> node) : node(node) {
             Pylon::PylonInitialize();
             // Create an instant camera object with the camera device found first.
             camera = new Pylon::CBaslerUsbInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
             camera->Open();
             // Print the model name of the camera.
-            ROS_INFO("Using device %s", camera->GetDeviceInfo().GetModelName().c_str());
+            RCLCPP_INFO(node->get_logger(), "Using device %s", camera->GetDeviceInfo().GetModelName().c_str());
             // The parameter MaxNumBuffer can be used to control the count of buffers
             // allocated for grabbing. The default value of this parameter is 10.
             camera->MaxNumBuffer = 5;
@@ -31,7 +40,8 @@ class PylonUSBCamera {
             // Start the grabbing.
             // The camera device is parameterized with a default configuration which
             // sets up free-running continuous acquisition.
-            camera->StartGrabbing(/*Pylon::GrabStrategy_LatestImageOnly*/);
+            camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
+            RCLCPP_INFO(node->get_logger(), "Expected frame-rate is %f.", camera->ResultingFrameRate());
         }
         ~PylonUSBCamera() {
             delete camera;
@@ -61,26 +71,30 @@ class PylonUSBCamera {
     }
 };
 
-sensor_msgs::Image pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
+sensor_msgs::msg::Image pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
     // Access the image data.
     const uint8_t *pImageBuffer = (uint8_t *) ptrGrabResult->GetBuffer();
     const size_t payloadSize = ptrGrabResult->GetPayloadSize();
-    sensor_msgs::Image img_raw_msg;
-    img_raw_msg.header.stamp = ros::Time::now(); 
-    img_raw_msg.width = ptrGrabResult->GetWidth();
-    img_raw_msg.height = ptrGrabResult->GetHeight();
-    img_raw_msg.encoding = sensor_msgs::image_encodings::RGB8; // TODO: check if this actually matches the camera settings
-    img_raw_msg.step = img_raw_msg.width * 3; // TODO: see above
-    img_raw_msg.data.assign(pImageBuffer,pImageBuffer+payloadSize);
-    return img_raw_msg;
+    sensor_msgs::msg::Image img;
+    img.width = ptrGrabResult->GetWidth();
+    img.height = ptrGrabResult->GetHeight();
+    img.encoding = sensor_msgs::image_encodings::RGB8; // TODO: check if this actually matches the camera settings
+    img.step = img.width * 3; // TODO: see above
+    img.data.assign(pImageBuffer, pImageBuffer + payloadSize);
+    return img;
     }
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "pylon_camera_node");
-    ros::NodeHandle nh("~");
-    image_transport::ImageTransport it(nh);
-    image_transport::CameraPublisher publisher = it.advertiseCamera("image_raw", 1);
+    rclcpp::init(argc, argv);
+    std::shared_ptr<rclcpp::Node> node = std::make_shared<rclcpp::Node>("pylon_usbinstantcamera");
+    
+    // set quality of service as demonstrated at https://github.com/ros2/demos/blob/master/image_tools/src/cam2image.cpp
+    rclcpp::QoS qos(1); // keep latest
+    // qos = qos.best_effort(); // when using best_effort, no images are transferred
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher = node->create_publisher<sensor_msgs::msg::Image>("image", qos);
+#ifdef CAMERA_INFO_MANAGER
+    #error "This was never adjusted for ros2 as I did not have a camera_info_manager at hand."
     camera_info_manager::CameraInfoManager cim(nh);
     std::string camera_info_url;
     if (nh.getParam("camera_info_url", camera_info_url))
@@ -89,15 +103,21 @@ int main(int argc, char **argv)
     }
     else
     {
-        ROS_WARN("camera_info_url not supplied in configuration. Camera info will be unavailable. Rectification is not possible.");
+        RCLCPP_WARN(this->get_logger(), "camera_info_url not supplied in configuration. Camera info will be unavailable. Rectification is not possible.");
     }
     sensor_msgs::CameraInfo cam_info = cim.getCameraInfo();
-    PylonUSBCamera camera;
-    while(ros::ok()) {
-        sensor_msgs::Image img = pylon_result_to_image_message(camera.grab_frame());
+#endif
+    PylonUSBCamera camera(node);
+    while(rclcpp::ok()) {
+        sensor_msgs::msg::Image img = pylon_result_to_image_message(camera.grab_frame());
+        img.header.stamp = node->now(); 
+#ifdef CAMERA_INFO_MANAGER
         cam_info.header.stamp = img.header.stamp;
-        publisher.publish(img, cam_info);
-        ros::spinOnce();
+        publisher->publish(img, cam_info);
+#else
+        publisher->publish(img);
+#endif
+        rclcpp::spin_some(node);
     };
-    return EXIT_SUCCESS;
+    return 0;
 }
