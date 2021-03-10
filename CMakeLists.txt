@@ -9,11 +9,8 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(image_transport REQUIRED)
-find_package(camera_info_manager QUIET) # in development at https://github.com/ros-perception/image_common/tree/ros2
-if (NOT ${camera_info_manager_FOUND})
-    message(WARNING "image_transport not found. Rectification via camera info parameters will not be possible.")
-endif()
+find_package(sensor_msgs REQUIRED)
+find_package(camera_calibration_parsers REQUIRED)
 
 find_package(Pylon QUIET)
 if (NOT ${Pylon_FOUND})
@@ -32,8 +29,8 @@ target_link_libraries(node
 )
 ament_target_dependencies(node 
 	rclcpp
-	image_transport
 	sensor_msgs
+	camera_calibration_parsers
 )
 
 install(TARGETS 
