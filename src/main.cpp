@@ -1,5 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/image.hpp>
+#include <image_transport/image_transport.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <camera_calibration_parsers/parse.hpp>
 #include <sensor_msgs/image_encodings.hpp>
@@ -65,7 +65,7 @@ private:
     std::string camera_info_path;
 
     // publishers
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher;
+    image_transport::CameraPublisher image_publisher;
     rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_publisher;
 
     void parse_parameters() {
@@ -96,9 +96,7 @@ public:
             RCLCPP_WARN(get_logger(), "camera_info was not loaded. image_proc will not perform rectification automatically.");
         }
 
-        // defaults to QoS "keep latest (1)"
-        // NOTE: when using best_effort for performance, no images are transferred
-        image_publisher = this->create_publisher<sensor_msgs::msg::Image>("image", 1);
+        image_publisher = image_transport::create_camera_publisher(this, "image");
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device %s.", camera->camera->GetDeviceInfo().GetModelName().c_str());
@@ -108,12 +106,9 @@ public:
         sensor_msgs::msg::Image img_msg = pylon_result_to_image_message(camera->grab_frame());
         img_msg.header.stamp = this->now();
         img_msg.header.frame_id = frame_id;
-        if (camera_info_publisher) {
-            camera_info_msg.header.stamp = img_msg.header.stamp;
-            camera_info_msg.header.frame_id = img_msg.header.frame_id;
-            camera_info_publisher->publish(camera_info_msg);
-        }
-        image_publisher->publish(std::move(img_msg));
+        camera_info_msg.header.stamp = img_msg.header.stamp;
+        camera_info_msg.header.frame_id = img_msg.header.frame_id;
+        image_publisher.publish(std::move(img_msg), camera_info_msg);
     }
 private:
     sensor_msgs::msg::Image pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {

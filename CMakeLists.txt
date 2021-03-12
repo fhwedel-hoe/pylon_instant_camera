@@ -9,7 +9,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
+find_package(image_transport REQUIRED)
 find_package(camera_calibration_parsers REQUIRED)
 
 find_package(Pylon QUIET)
@@ -29,7 +29,7 @@ target_link_libraries(node
 )
 ament_target_dependencies(node 
 	rclcpp
-	sensor_msgs
+	image_transport
 	camera_calibration_parsers
 )
 
