@@ -78,8 +78,12 @@ sensor_msgs::msg::Image pylon_result_to_image_message(Pylon::CGrabResultPtr & pt
     sensor_msgs::msg::Image img;
     img.width = ptrGrabResult->GetWidth();
     img.height = ptrGrabResult->GetHeight();
-    img.encoding = sensor_msgs::image_encodings::RGB8; // TODO: check if this actually matches the camera settings
-    img.step = img.width * 3; // TODO: see above
+    if (ptrGrabResult->GetPixelType() != Pylon::EPixelType::PixelType_RGB8packed) {
+		throw std::runtime_error("Captured image was not RGB8.");
+	} else {
+		img.encoding = sensor_msgs::image_encodings::RGB8;
+		img.step = img.width * 3;
+	}
     img.data.assign(pImageBuffer, pImageBuffer + payloadSize);
     return img;
     }
