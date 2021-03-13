@@ -11,6 +11,28 @@
 #include <pylon/usb/BaslerUsbInstantCamera.h>
 #pragma GCC diagnostic pop
 
+// this BufferFactory pre-allocates sensor_msgs::msg::Image memory
+// so the Basler Pylon SDK can write into the data vectors directly
+class ImageBufferFactory : public Pylon::IBufferFactory {
+public:
+	~ImageBufferFactory() {
+	}
+	virtual void AllocateBuffer(size_t bufferSize, void **pCreatedBuffer, intptr_t &bufferContext) {
+		sensor_msgs::msg::Image * image_message_ptr = new sensor_msgs::msg::Image();
+		image_message_ptr->data.resize(bufferSize);
+		*pCreatedBuffer = image_message_ptr->data.data();
+		bufferContext = reinterpret_cast<intptr_t>(image_message_ptr);
+	}
+	virtual void FreeBuffer(void *, intptr_t bufferContext) {
+		delete ReinterpretBufferContext(bufferContext);
+	}
+	virtual void DestroyBufferFactory() {
+	}
+	static sensor_msgs::msg::Image * ReinterpretBufferContext(intptr_t bufferContext) {
+		return reinterpret_cast<sensor_msgs::msg::Image *>(bufferContext);
+	}
+};
+
 class PylonUSBCamera {
 private:
     // This smart pointer will receive the grab result data.
@@ -23,6 +45,8 @@ public:
         // Create an instant camera object with the camera device found first.
         camera = new Pylon::CBaslerUsbInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
         camera->Open();
+        // provide Pylon with sensor_msgs::msg::Image buffers
+        camera->SetBufferFactory(new ImageBufferFactory());
         // The parameter MaxNumBuffer can be used to control the count of buffers
         // allocated for grabbing. The default value of this parameter is 10.
         camera->MaxNumBuffer = 5;
@@ -38,9 +62,7 @@ public:
     }
     Pylon::CGrabResultPtr & grab_frame() {
         if (camera->IsGrabbing()) {
-            // Wait for an image and then retrieve it. A timeout of 1000 ms is used.
-            // NOTE: performs an implicit copy. this is a memory/CPU bottleneck.
-            // NOTE: Maybe using SetBufferFactory and an IBufferFactory pre-allocating sensor_msgs::msg::Image helps
+            // Wait for an image and then retrieve it.
             camera->RetrieveResult(grab_timeout_ms, ptrGrabResult, Pylon::TimeoutHandling_ThrowException);
             // Image grabbed successfully?
             if (ptrGrabResult->GrabSucceeded()) {
@@ -64,9 +86,8 @@ private:
     std::string frame_id = "pylon_camera";
     std::string camera_info_path;
 
-    // publishers
+    // publisher
     image_transport::CameraPublisher image_publisher;
-    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_publisher;
 
     void parse_parameters() {
         // ros2 parameters
@@ -90,9 +111,7 @@ public:
         
         // stolen from https://github.com/clydemcqueen/opencv_cam/blob/master/src/opencv_cam_node.cpp
         std::string camera_name;
-        if (!camera_info_path.empty() && camera_calibration_parsers::readCalibration(camera_info_path, camera_name, camera_info_msg)) {
-            camera_info_publisher = this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", 1);
-        } else {
+        if (camera_info_path.empty() || !camera_calibration_parsers::readCalibration(camera_info_path, camera_name, camera_info_msg)) {
             RCLCPP_WARN(get_logger(), "camera_info was not loaded. image_proc will not perform rectification automatically.");
         }
 
@@ -103,29 +122,25 @@ public:
         RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
     }
     void grab_and_publish() {
-        sensor_msgs::msg::Image img_msg = pylon_result_to_image_message(camera->grab_frame());
-        img_msg.header.stamp = this->now();
-        img_msg.header.frame_id = frame_id;
-        camera_info_msg.header.stamp = img_msg.header.stamp;
-        camera_info_msg.header.frame_id = img_msg.header.frame_id;
-        image_publisher.publish(std::move(img_msg), camera_info_msg);
+        sensor_msgs::msg::Image * img_msg = pylon_result_to_image_message(camera->grab_frame());
+        img_msg->header.stamp = this->now();
+        img_msg->header.frame_id = frame_id;
+        camera_info_msg.header.stamp = img_msg->header.stamp;
+        camera_info_msg.header.frame_id = img_msg->header.frame_id;
+        image_publisher.publish(*img_msg, camera_info_msg);
     }
 private:
-    sensor_msgs::msg::Image pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
-        // Access the image data.
-        const uint8_t *pImageBuffer = (uint8_t *) ptrGrabResult->GetBuffer();
-        const size_t payloadSize = ptrGrabResult->GetPayloadSize();
-        sensor_msgs::msg::Image img;
-        img.width = ptrGrabResult->GetWidth();
-        img.height = ptrGrabResult->GetHeight();
+    sensor_msgs::msg::Image * pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
+        sensor_msgs::msg::Image * img = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
+        img->width = ptrGrabResult->GetWidth();
+        img->height = ptrGrabResult->GetHeight();
         if (ptrGrabResult->GetPixelType() != Pylon::EPixelType::PixelType_RGB8packed) {
             throw std::runtime_error("Captured image was not RGB8.");
         } else {
-            img.encoding = sensor_msgs::image_encodings::RGB8;
-            img.step = img.width * 3;
+            img->encoding = sensor_msgs::image_encodings::RGB8;
+            img->step = img->width * 3; // use GetStride?
         }
-        img.data.assign(pImageBuffer, pImageBuffer + payloadSize); // NOTE: explicit copy. this is a memory/CPU bottleneck.
-        return img; // NOTE: this is NOT a bottle neck. copy-elision is strong in this one
+        return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
     }
 };
 
