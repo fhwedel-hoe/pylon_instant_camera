@@ -9,6 +9,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(camera_calibration_parsers REQUIRED)
 
@@ -20,22 +21,25 @@ if (NOT ${Pylon_FOUND})
     message(FATAL "Unable to find Basler Pylon SDK.")
 endif()
 
-add_executable(node src/main.cpp)
-target_include_directories(node PUBLIC
-  ${Pylon_INCLUDE_DIRS}
+set(NODE_NAME "PylonUSBCameraNode")
+add_library(${NODE_NAME} SHARED src/main.cpp)
+target_include_directories(${NODE_NAME} PUBLIC
+    ${Pylon_INCLUDE_DIRS}
 )
-target_link_libraries(node
-  ${Pylon_LIBRARIES}
+target_link_libraries(${NODE_NAME}
+    ${Pylon_LIBRARIES}
 )
-ament_target_dependencies(node 
-	rclcpp
-	image_transport
-	camera_calibration_parsers
+ament_target_dependencies(${NODE_NAME} 
+    rclcpp
+    rclcpp_components
+    image_transport
+    camera_calibration_parsers
 )
+rclcpp_components_register_node(${NODE_NAME} PLUGIN "${PROJECT_NAME}::${NODE_NAME}" EXECUTABLE "node")
 
 install(TARGETS 
-  node
-  DESTINATION lib/${PROJECT_NAME}
+  ${NODE_NAME}
+  DESTINATION lib
 )
 
 ament_package()

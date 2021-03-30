@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <image_transport/image_transport.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <camera_calibration_parsers/parse.hpp>
@@ -11,26 +12,28 @@
 #include <pylon/usb/BaslerUsbInstantCamera.h>
 #pragma GCC diagnostic pop
 
+namespace pylon_usb_instant_camera {
+
 // this BufferFactory pre-allocates sensor_msgs::msg::Image memory
 // so the Basler Pylon SDK can write into the data vectors directly
 class ImageBufferFactory : public Pylon::IBufferFactory {
 public:
-	~ImageBufferFactory() {
-	}
-	virtual void AllocateBuffer(size_t bufferSize, void **pCreatedBuffer, intptr_t &bufferContext) {
-		sensor_msgs::msg::Image * image_message_ptr = new sensor_msgs::msg::Image();
-		image_message_ptr->data.resize(bufferSize);
-		*pCreatedBuffer = image_message_ptr->data.data();
-		bufferContext = reinterpret_cast<intptr_t>(image_message_ptr);
-	}
-	virtual void FreeBuffer(void *, intptr_t bufferContext) {
-		delete ReinterpretBufferContext(bufferContext);
-	}
-	virtual void DestroyBufferFactory() {
-	}
-	static sensor_msgs::msg::Image * ReinterpretBufferContext(intptr_t bufferContext) {
-		return reinterpret_cast<sensor_msgs::msg::Image *>(bufferContext);
-	}
+    ~ImageBufferFactory() {
+    }
+    virtual void AllocateBuffer(size_t bufferSize, void **pCreatedBuffer, intptr_t &bufferContext) {
+        sensor_msgs::msg::Image * image_message_ptr = new sensor_msgs::msg::Image();
+        image_message_ptr->data.resize(bufferSize);
+        *pCreatedBuffer = image_message_ptr->data.data();
+        bufferContext = reinterpret_cast<intptr_t>(image_message_ptr);
+    }
+    virtual void FreeBuffer(void *, intptr_t bufferContext) {
+        delete ReinterpretBufferContext(bufferContext);
+    }
+    virtual void DestroyBufferFactory() {
+    }
+    static sensor_msgs::msg::Image * ReinterpretBufferContext(intptr_t bufferContext) {
+        return reinterpret_cast<sensor_msgs::msg::Image *>(bufferContext);
+    }
 };
 
 class PylonUSBCamera {
@@ -88,6 +91,9 @@ private:
 
     // publisher
     image_transport::CameraPublisher image_publisher;
+    
+    // background thread
+    std::unique_ptr<std::thread> grabbing_thread;
 
     void parse_parameters() {
         // ros2 parameters
@@ -96,6 +102,7 @@ private:
         // camera parameters
         camera->grab_timeout_ms = this->declare_parameter("grab_timeout", camera->grab_timeout_ms);
         RCLCPP_INFO(this->get_logger(), "grab_timeout is %d ms.", camera->grab_timeout_ms);
+        // TODO: load all parameters from pfs file
         int binning = this->declare_parameter("binning", 0);
         if (binning > 0) {
             camera->camera->BinningHorizontal.SetValue(binning);
@@ -105,7 +112,10 @@ private:
     }
 
 public:
-    PylonUSBCameraNode() : Node("pylon_usb_instant_camera"), camera(std::make_unique<PylonUSBCamera>()) {
+    PylonUSBCameraNode(const rclcpp::NodeOptions & options) : 
+        Node("pylon_usb_instant_camera", options), 
+        camera(std::make_unique<PylonUSBCamera>()) 
+    {
         // set user-defined parameters
         parse_parameters();
         
@@ -120,6 +130,13 @@ public:
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device %s.", camera->camera->GetDeviceInfo().GetModelName().c_str());
         RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
+        
+        grabbing_thread = std::make_unique<std::thread>([this](){
+			// have the main loop in a thread since blocking functions and rclcpp::spin() are mutually exclusive
+            while(rclcpp::ok()) {
+                this->grab_and_publish();
+            }
+        });
     }
     void grab_and_publish() {
         sensor_msgs::msg::Image * img_msg = pylon_result_to_image_message(camera->grab_frame());
@@ -144,13 +161,6 @@ private:
     }
 };
 
-int main(int argc, char **argv)
-{
-    rclcpp::init(argc, argv);
-    auto camera_node = std::make_shared<PylonUSBCameraNode>();
-    while(rclcpp::ok()) {
-        camera_node->grab_and_publish();
-        rclcpp::spin_some(camera_node);
-    };
-    return 0;
-}
+} // end namespace pylon_usb_instant_camera
+
+RCLCPP_COMPONENTS_REGISTER_NODE(pylon_usb_instant_camera::PylonUSBCameraNode)
