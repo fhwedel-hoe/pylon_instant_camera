@@ -87,7 +87,7 @@ private:
     // camera info (for rectification data)
     sensor_msgs::msg::CameraInfo camera_info_msg;
     std::string frame_id = "pylon_camera";
-    std::string camera_info_path;
+    std::string camera_info_path = "camera_calibration.yaml";
 
     // publisher
     image_transport::CameraPublisher image_publisher;
@@ -121,7 +121,7 @@ public:
         
         // stolen from https://github.com/clydemcqueen/opencv_cam/blob/master/src/opencv_cam_node.cpp
         std::string camera_name;
-        if (camera_info_path.empty() || !camera_calibration_parsers::readCalibration(camera_info_path, camera_name, camera_info_msg)) {
+        if (!camera_calibration_parsers::readCalibration(camera_info_path, camera_name, camera_info_msg)) {
             RCLCPP_WARN(get_logger(), "camera_info was not loaded. image_proc will not perform rectification automatically.");
         }
 
