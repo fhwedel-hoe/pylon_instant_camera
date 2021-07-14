@@ -9,7 +9,7 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #include <pylon/PylonIncludes.h>
-#include <pylon/usb/BaslerUsbInstantCamera.h>
+#include <pylon/gige/BaslerGigEInstantCamera.h>
 #pragma GCC diagnostic pop
 
 namespace pylon_usb_instant_camera {
@@ -41,19 +41,19 @@ private:
     // This smart pointer will receive the grab result data.
     Pylon::CGrabResultPtr ptrGrabResult;
 public:
-    Pylon::CBaslerUsbInstantCamera * camera;
+    Pylon::CBaslerGigEInstantCamera * camera;
     int grab_timeout_ms = 1000;
     PylonUSBCamera() {
         Pylon::PylonInitialize();
         // Create an instant camera object with the camera device found first.
-        camera = new Pylon::CBaslerUsbInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+        camera = new Pylon::CBaslerGigEInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
         camera->Open();
         // provide Pylon with sensor_msgs::msg::Image buffers
         camera->SetBufferFactory(new ImageBufferFactory());
         // The parameter MaxNumBuffer can be used to control the count of buffers
         // allocated for grabbing. The default value of this parameter is 10.
         camera->MaxNumBuffer = 5;
-        camera->PixelFormat.SetValue(Basler_UsbCameraParams::PixelFormat_RGB8);
+        camera->PixelFormat.SetValue(Basler_GigECameraParams::PixelFormat_RGB8Packed);
         // Start the grabbing.
         // The camera device is parameterized with a default configuration which
         // sets up free-running continuous acquisition.
@@ -129,7 +129,7 @@ public:
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device %s.", camera->camera->GetDeviceInfo().GetModelName().c_str());
-        RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
+        //RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
         
         grabbing_thread = std::make_unique<std::thread>([this](){
 			// have the main loop in a thread since blocking functions and rclcpp::spin() are mutually exclusive
