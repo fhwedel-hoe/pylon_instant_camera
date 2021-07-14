@@ -45,19 +45,27 @@ public:
     int grab_timeout_ms = 1000;
     PylonUSBCamera() {
         Pylon::PylonInitialize();
-        // Create an instant camera object with the camera device found first.
-        camera = new Pylon::CBaslerGigEInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
-        camera->Open();
-        // provide Pylon with sensor_msgs::msg::Image buffers
-        camera->SetBufferFactory(new ImageBufferFactory());
-        // The parameter MaxNumBuffer can be used to control the count of buffers
-        // allocated for grabbing. The default value of this parameter is 10.
-        camera->MaxNumBuffer = 5;
-        camera->PixelFormat.SetValue(Basler_GigECameraParams::PixelFormat_RGB8Packed);
-        // Start the grabbing.
-        // The camera device is parameterized with a default configuration which
-        // sets up free-running continuous acquisition.
-        camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
+        try {
+			// Create an instant camera object with the camera device found first.
+			camera = new Pylon::CBaslerGigEInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+			camera->Open();
+			// provide Pylon with sensor_msgs::msg::Image buffers
+			camera->SetBufferFactory(new ImageBufferFactory());
+			// The parameter MaxNumBuffer can be used to control the count of buffers
+			// allocated for grabbing. The default value of this parameter is 10.
+			camera->MaxNumBuffer = 5;
+			camera->PixelFormat.SetValue(Basler_GigECameraParams::PixelFormat_RGB8Packed);
+			// Start the grabbing.
+			// The camera device is parameterized with a default configuration which
+			// sets up free-running continuous acquisition.
+			camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
+		} catch (const GenICam_3_1_Basler_pylon::RuntimeException & e) {
+			std::cerr << e.what() << std::endl;
+			throw e;
+		} catch (const GenICam_3_1_Basler_pylon::AccessException & e) {
+			std::cerr << e.what() << std::endl;
+			throw e;
+		}
     }
     ~PylonUSBCamera() {
         delete camera;
