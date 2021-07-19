@@ -54,7 +54,7 @@ public:
 			// The parameter MaxNumBuffer can be used to control the count of buffers
 			// allocated for grabbing. The default value of this parameter is 10.
 			camera->MaxNumBuffer = 5;
-			camera->PixelFormat.SetValue(Basler_GigECameraParams::PixelFormat_RGB8Packed);
+			camera->PixelFormat.SetValue(Basler_GigECameraParams::PixelFormat_BayerRG8);
 			// Start the grabbing.
 			// The camera device is parameterized with a default configuration which
 			// sets up free-running continuous acquisition.
@@ -142,7 +142,11 @@ public:
         grabbing_thread = std::make_unique<std::thread>([this](){
 			// have the main loop in a thread since blocking functions and rclcpp::spin() are mutually exclusive
             while(rclcpp::ok()) {
-                this->grab_and_publish();
+                try {
+                    this->grab_and_publish();
+                } catch (const GenICam_3_1_Basler_pylon::TimeoutException & e) {
+                    RCLCPP_WARN(get_logger(), "Timeout while grabbing.");
+                }
             }
         });
     }
@@ -159,11 +163,14 @@ private:
         sensor_msgs::msg::Image * img = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
         img->width = ptrGrabResult->GetWidth();
         img->height = ptrGrabResult->GetHeight();
-        if (ptrGrabResult->GetPixelType() != Pylon::EPixelType::PixelType_RGB8packed) {
-            throw std::runtime_error("Captured image was not RGB8.");
+        size_t stride;
+        ptrGrabResult->GetStride(stride);
+        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
+        if (ptrGrabResult->GetPixelType() != Pylon::EPixelType::PixelType_BayerRG8) {
+            throw std::runtime_error("Captured image was not Bayer RG 8.");
         } else {
-            img->encoding = sensor_msgs::image_encodings::RGB8;
-            img->step = img->width * 3; // use GetStride?
+            img->encoding = sensor_msgs::image_encodings::BAYER_RGGB8;
+            img->step = stride;
         }
         return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
     }
