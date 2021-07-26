@@ -9,7 +9,8 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #include <pylon/PylonIncludes.h>
-#include <pylon/gige/BaslerGigEInstantCamera.h>
+#include <pylon/BaslerUniversalInstantCamera.h>
+#include <pylon/DeviceInfo.h>
 #pragma GCC diagnostic pop
 
 namespace pylon_usb_instant_camera {
@@ -41,20 +42,28 @@ private:
     // This smart pointer will receive the grab result data.
     Pylon::CGrabResultPtr ptrGrabResult;
 public:
-    Pylon::CBaslerGigEInstantCamera * camera;
+    Pylon::CBaslerUniversalInstantCamera * camera;
     int grab_timeout_ms = 1000;
-    PylonUSBCamera() {
+    PylonUSBCamera(std::string full_name, std::string user_defined_name, std::string ip_address) {
         Pylon::PylonInitialize();
         try {
-			// Create an instant camera object with the camera device found first.
-			camera = new Pylon::CBaslerGigEInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+			// Create an instant camera object with the camera device found first or found by specified parameters.
+            if (full_name == "not_specified" && user_defined_name == "not_specified" && ip_address == "not_specified") {
+                camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+            } else {
+                Pylon::CDeviceInfo di;
+                if (full_name != "not_specified") di.SetFullName(full_name.c_str());
+                if (user_defined_name != "not_specified") di.SetUserDefinedName(user_defined_name.c_str());
+                if (ip_address != "not_specified") di.SetIpAddress(ip_address.c_str());
+                camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateDevice(di));
+            }
 			camera->Open();
 			// provide Pylon with sensor_msgs::msg::Image buffers
 			camera->SetBufferFactory(new ImageBufferFactory());
 			// The parameter MaxNumBuffer can be used to control the count of buffers
 			// allocated for grabbing. The default value of this parameter is 10.
 			camera->MaxNumBuffer = 5;
-			camera->PixelFormat.SetValue(Basler_GigECameraParams::PixelFormat_BayerRG8);
+			camera->PixelFormat.SetValue(Basler_UniversalCameraParams::PixelFormat_BayerRG8);
 			// Start the grabbing.
 			// The camera device is parameterized with a default configuration which
 			// sets up free-running continuous acquisition.
@@ -96,6 +105,9 @@ private:
     sensor_msgs::msg::CameraInfo camera_info_msg;
     std::string frame_id = "pylon_camera";
     std::string camera_info_path = "camera_calibration.yaml";
+    std::string full_name = "not_specified";
+    std::string user_defined_name = "not_specified";
+    std::string ip_address = "not_specified";
 
     // publisher
     image_transport::CameraPublisher image_publisher;
@@ -121,12 +133,18 @@ private:
 
 public:
     PylonUSBCameraNode(const rclcpp::NodeOptions & options) : 
-        Node("pylon_usb_instant_camera", options), 
-        camera(std::make_unique<PylonUSBCamera>()) 
+        Node("pylon_usb_instant_camera", options)
     {
+        // parse device ID and IP address parameters to construct the camera object
+        full_name = this->declare_parameter("full_name", full_name);
+        user_defined_name = this->declare_parameter("user_defined_name", user_defined_name);
+        ip_address = this->declare_parameter("ip_address", ip_address);
+        RCLCPP_INFO(this->get_logger(), "Constructing camera object for full name [%s], user defined name [%s], IP address [%s].", full_name.c_str(), user_defined_name.c_str(), ip_address.c_str());
+        camera = std::make_unique<PylonUSBCamera>(full_name, user_defined_name, ip_address);
+
         // set user-defined parameters
         parse_parameters();
-        
+
         // stolen from https://github.com/clydemcqueen/opencv_cam/blob/master/src/opencv_cam_node.cpp
         std::string camera_name;
         if (!camera_calibration_parsers::readCalibration(camera_info_path, camera_name, camera_info_msg)) {
@@ -136,7 +154,7 @@ public:
         image_publisher = image_transport::create_camera_publisher(this, "image");
         
         // log some information
-        RCLCPP_INFO(this->get_logger(), "Using device %s.", camera->camera->GetDeviceInfo().GetModelName().c_str());
+        RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
         //RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
         
         grabbing_thread = std::make_unique<std::thread>([this](){
