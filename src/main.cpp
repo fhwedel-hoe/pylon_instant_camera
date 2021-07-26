@@ -13,7 +13,7 @@
 #include <pylon/DeviceInfo.h>
 #pragma GCC diagnostic pop
 
-namespace pylon_usb_instant_camera {
+namespace pylon_instant_camera {
 
 // this BufferFactory pre-allocates sensor_msgs::msg::Image memory
 // so the Basler Pylon SDK can write into the data vectors directly
@@ -37,14 +37,14 @@ public:
     }
 };
 
-class PylonUSBCamera {
+class PylonCamera {
 private:
     // This smart pointer will receive the grab result data.
     Pylon::CGrabResultPtr ptrGrabResult;
 public:
     Pylon::CBaslerUniversalInstantCamera * camera;
     int grab_timeout_ms = 1000;
-    PylonUSBCamera(std::string full_name, std::string user_defined_name, std::string ip_address) {
+    PylonCamera(std::string full_name, std::string user_defined_name, std::string ip_address) {
         Pylon::PylonInitialize();
         try {
 			// Create an instant camera object with the camera device found first or found by specified parameters.
@@ -76,7 +76,7 @@ public:
 			throw e;
 		}
     }
-    ~PylonUSBCamera() {
+    ~PylonCamera() {
         delete camera;
         Pylon::PylonTerminate(); 
     }
@@ -96,10 +96,10 @@ public:
     }
 };
 
-class PylonUSBCameraNode : public rclcpp::Node {
+class PylonCameraNode : public rclcpp::Node {
 private:
     // the camera
-    std::unique_ptr<PylonUSBCamera> camera;
+    std::unique_ptr<PylonCamera> camera;
     
     // camera info (for rectification data)
     sensor_msgs::msg::CameraInfo camera_info_msg;
@@ -132,15 +132,15 @@ private:
     }
 
 public:
-    PylonUSBCameraNode(const rclcpp::NodeOptions & options) : 
-        Node("pylon_usb_instant_camera", options)
+    PylonCameraNode(const rclcpp::NodeOptions & options) : 
+        Node("pylon_instant_camera", options)
     {
         // parse device ID and IP address parameters to construct the camera object
         full_name = this->declare_parameter("full_name", full_name);
         user_defined_name = this->declare_parameter("user_defined_name", user_defined_name);
         ip_address = this->declare_parameter("ip_address", ip_address);
         RCLCPP_INFO(this->get_logger(), "Constructing camera object for full name [%s], user defined name [%s], IP address [%s].", full_name.c_str(), user_defined_name.c_str(), ip_address.c_str());
-        camera = std::make_unique<PylonUSBCamera>(full_name, user_defined_name, ip_address);
+        camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address);
 
         // set user-defined parameters
         parse_parameters();
@@ -194,6 +194,6 @@ private:
     }
 };
 
-} // end namespace pylon_usb_instant_camera
+} // end namespace pylon_instant_camera
 
-RCLCPP_COMPONENTS_REGISTER_NODE(pylon_usb_instant_camera::PylonUSBCameraNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(pylon_instant_camera::PylonCameraNode)

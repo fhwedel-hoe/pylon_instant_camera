@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(pylon_usb_instant_camera)
+project(pylon_instant_camera)
 
 set (CMAKE_CXX_STANDARD 17)
 
@@ -21,7 +21,7 @@ if (NOT ${Pylon_FOUND})
     message(FATAL "Unable to find Basler Pylon SDK.")
 endif()
 
-set(NODE_NAME "PylonUSBCameraNode")
+set(NODE_NAME "PylonCameraNode")
 add_library(${NODE_NAME} SHARED src/main.cpp)
 target_include_directories(${NODE_NAME} PUBLIC
     ${Pylon_INCLUDE_DIRS}
