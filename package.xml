@@ -5,7 +5,7 @@
   <version>3.0.0</version>
   <description>Access to Basler camera via Pylon CBaslerUniversalInstantCamera API. Supports high-performance, arbitrary framerate, free-running mode.</description>
   <maintainer email="hoe@fh-wedel.de">Hermann Höhne</maintainer>
-  <license>GPLv3</license>
+  <license>MIT</license>
   <url type="repository">https://github.com/fhwedel-hoe/pylon_usb-instant-camera</url>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>rclcpp</depend>
