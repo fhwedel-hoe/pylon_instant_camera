@@ -63,7 +63,6 @@ public:
 			// The parameter MaxNumBuffer can be used to control the count of buffers
 			// allocated for grabbing. The default value of this parameter is 10.
 			camera->MaxNumBuffer = 5;
-			camera->PixelFormat.SetValue(Basler_UniversalCameraParams::PixelFormat_BayerRG8);
 			// Start the grabbing.
 			// The camera device is parameterized with a default configuration which
 			// sets up free-running continuous acquisition.
@@ -177,19 +176,25 @@ public:
         image_publisher.publish(*img_msg, camera_info_msg);
     }
 private:
+    const std::map<Pylon::EPixelType, const char *> Pylon2ROS {
+        {Pylon::EPixelType::PixelType_BayerRG8, sensor_msgs::image_encodings::BAYER_RGGB8},
+        {Pylon::EPixelType::PixelType_RGB8packed, sensor_msgs::image_encodings::RGB8}
+    };
     sensor_msgs::msg::Image * pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
         sensor_msgs::msg::Image * img = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
         img->width = ptrGrabResult->GetWidth();
         img->height = ptrGrabResult->GetHeight();
         size_t stride;
         ptrGrabResult->GetStride(stride);
-        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
-        if (ptrGrabResult->GetPixelType() != Pylon::EPixelType::PixelType_BayerRG8) {
-            throw std::runtime_error("Captured image was not Bayer RG 8.");
-        } else {
-            img->encoding = sensor_msgs::image_encodings::BAYER_RGGB8;
-            img->step = stride;
+        img->step = stride;
+        const Pylon::EPixelType pixel_type = ptrGrabResult->GetPixelType();
+        try {
+            img->encoding = Pylon2ROS.at(pixel_type);
+        } catch (std::out_of_range &) {
+            const std::string pixel_type_str(Pylon::CPixelTypeMapper::GetNameByPixelType(pixel_type));
+            throw std::runtime_error("Captured image has Pylon pixel type "+pixel_type_str+". This driver does not know the corresponding ROS image encoding.");
         }
+        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
         return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
     }
 };
