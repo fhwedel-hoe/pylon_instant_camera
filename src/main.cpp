@@ -47,33 +47,37 @@ public:
     PylonCamera(std::string full_name, std::string user_defined_name, std::string ip_address) {
         Pylon::PylonInitialize();
         try {
-			// Create an instant camera object with the camera device found first or found by specified parameters.
-            if (full_name == "not_specified" && user_defined_name == "not_specified" && ip_address == "not_specified") {
+            // Create an instant camera object with the camera device found first or found by specified parameters.
+            if (!full_name.empty() && !user_defined_name.empty() && !ip_address.empty()) {
                 camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
             } else {
                 Pylon::CDeviceInfo di;
-                if (full_name != "not_specified") di.SetFullName(full_name.c_str());
-                if (user_defined_name != "not_specified") di.SetUserDefinedName(user_defined_name.c_str());
-                if (ip_address != "not_specified") di.SetIpAddress(ip_address.c_str());
+                if (!full_name.empty()) { 
+                    di.SetFullName(full_name.c_str()); 
+                }
+                if (!user_defined_name.empty()) { 
+                    di.SetUserDefinedName(user_defined_name.c_str()); 
+                }
+                if (!ip_address.empty()) { 
+                    di.SetIpAddress(ip_address.c_str()); 
+                }
                 camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateDevice(di));
             }
-			camera->Open();
-			// provide Pylon with sensor_msgs::msg::Image buffers
-			camera->SetBufferFactory(new ImageBufferFactory());
-			// The parameter MaxNumBuffer can be used to control the count of buffers
-			// allocated for grabbing. The default value of this parameter is 10.
-			camera->MaxNumBuffer = 5;
-			// Start the grabbing.
-			// The camera device is parameterized with a default configuration which
-			// sets up free-running continuous acquisition.
-			camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
-		} catch (const GenICam_3_1_Basler_pylon::RuntimeException & e) {
-			std::cerr << e.what() << std::endl;
-			throw e;
-		} catch (const GenICam_3_1_Basler_pylon::AccessException & e) {
-			std::cerr << e.what() << std::endl;
-			throw e;
-		}
+            camera->Open();
+            // provide Pylon with sensor_msgs::msg::Image buffers
+            camera->SetBufferFactory(new ImageBufferFactory());
+            // The parameter MaxNumBuffer can be used to control the count of buffers
+            // allocated for grabbing. The default value of this parameter is 10.
+            camera->MaxNumBuffer = 5;
+            // Start the grabbing.
+            camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
+        } catch (const GenICam_3_1_Basler_pylon::RuntimeException & e) {
+            std::cerr << e.what() << std::endl;
+            throw e;
+        } catch (const GenICam_3_1_Basler_pylon::AccessException & e) {
+            std::cerr << e.what() << std::endl;
+            throw e;
+        }
     }
     ~PylonCamera() {
         delete camera;
@@ -104,9 +108,11 @@ private:
     sensor_msgs::msg::CameraInfo camera_info_msg;
     std::string frame_id = "pylon_camera";
     std::string camera_info_path = "camera_calibration.yaml";
-    std::string full_name = "not_specified";
-    std::string user_defined_name = "not_specified";
-    std::string ip_address = "not_specified";
+    
+    // camera info (for connection, esp. GigE)
+    std::string full_name;
+    std::string user_defined_name;
+    std::string ip_address;
 
     // publisher
     image_transport::CameraPublisher image_publisher;
@@ -114,10 +120,14 @@ private:
     // background thread
     std::unique_ptr<std::thread> grabbing_thread;
 
-    void parse_parameters() {
+public:
+    PylonCameraNode(const rclcpp::NodeOptions & options) : 
+        Node("pylon_instant_camera", options)
+    {
         // ros2 parameters
         frame_id = this->declare_parameter("frame_id", frame_id);
         camera_info_path = this->declare_parameter("camera_info_yaml", camera_info_path);
+
         // camera parameters
         camera->grab_timeout_ms = this->declare_parameter("grab_timeout", camera->grab_timeout_ms);
         RCLCPP_INFO(this->get_logger(), "grab_timeout is %d ms.", camera->grab_timeout_ms);
@@ -128,12 +138,7 @@ private:
             camera->camera->BinningVertical.SetValue(binning);
             RCLCPP_INFO(this->get_logger(), "binning set to %d.", binning);
         }
-    }
 
-public:
-    PylonCameraNode(const rclcpp::NodeOptions & options) : 
-        Node("pylon_instant_camera", options)
-    {
         // parse device ID and IP address parameters to construct the camera object
         full_name = this->declare_parameter("full_name", full_name);
         user_defined_name = this->declare_parameter("user_defined_name", user_defined_name);
@@ -141,8 +146,9 @@ public:
         RCLCPP_INFO(this->get_logger(), "Constructing camera object for full name [%s], user defined name [%s], IP address [%s].", full_name.c_str(), user_defined_name.c_str(), ip_address.c_str());
         camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address);
 
-        // set user-defined parameters
-        parse_parameters();
+        // camera parameters
+        camera->grab_timeout_ms = this->declare_parameter("grab_timeout", camera->grab_timeout_ms);
+        RCLCPP_INFO(this->get_logger(), "grab_timeout is %d ms.", camera->grab_timeout_ms);
 
         // stolen from https://github.com/clydemcqueen/opencv_cam/blob/master/src/opencv_cam_node.cpp
         std::string camera_name;
@@ -154,10 +160,11 @@ public:
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
-        //RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
+        RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
         
         grabbing_thread = std::make_unique<std::thread>([this](){
-			// have the main loop in a thread since blocking functions and rclcpp::spin() are mutually exclusive
+            // have the main loop in a thread since blocking functions and rclcpp::spin() are mutually exclusive
+            // see https://answers.ros.org/question/374087/
             while(rclcpp::ok()) {
                 try {
                     this->grab_and_publish();
@@ -192,7 +199,11 @@ private:
             img->encoding = Pylon2ROS.at(pixel_type);
         } catch (std::out_of_range &) {
             const std::string pixel_type_str(Pylon::CPixelTypeMapper::GetNameByPixelType(pixel_type));
-            throw std::runtime_error("Captured image has Pylon pixel type "+pixel_type_str+". This driver does not know the corresponding ROS image encoding.");
+            RCLCPP_ERROR(this->get_logger(), "Captured image has Pylon pixel type %s. "\
+                         "This driver does not know the corresponding ROS image encoding. "\
+                         "Please add your preferred pixel type to the mapping code and file a pull request.",
+                         pixel_type_str.c_str());
+            throw std::runtime_error("Unknown Pylon pixel type.");
         }
         RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
         return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
