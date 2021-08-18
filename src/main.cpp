@@ -69,8 +69,6 @@ public:
             // The parameter MaxNumBuffer can be used to control the count of buffers
             // allocated for grabbing. The default value of this parameter is 10.
             camera->MaxNumBuffer = 5;
-            // Start the grabbing.
-            camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
         } catch (const GenICam_3_1_Basler_pylon::RuntimeException & e) {
             std::cerr << e.what() << std::endl;
             throw e;
@@ -108,6 +106,7 @@ private:
     sensor_msgs::msg::CameraInfo camera_info_msg;
     std::string frame_id = "pylon_camera";
     std::string camera_info_path = "camera_calibration.yaml";
+    std::string camera_settings_path;
     
     // camera info (for connection, esp. GigE)
     std::string full_name;
@@ -128,17 +127,6 @@ public:
         frame_id = this->declare_parameter("frame_id", frame_id);
         camera_info_path = this->declare_parameter("camera_info_yaml", camera_info_path);
 
-        // camera parameters
-        camera->grab_timeout_ms = this->declare_parameter("grab_timeout", camera->grab_timeout_ms);
-        RCLCPP_INFO(this->get_logger(), "grab_timeout is %d ms.", camera->grab_timeout_ms);
-        // TODO: load all parameters from pfs file
-        int binning = this->declare_parameter("binning", 0);
-        if (binning > 0) {
-            camera->camera->BinningHorizontal.SetValue(binning);
-            camera->camera->BinningVertical.SetValue(binning);
-            RCLCPP_INFO(this->get_logger(), "binning set to %d.", binning);
-        }
-
         // parse device ID and IP address parameters to construct the camera object
         full_name = this->declare_parameter("full_name", full_name);
         user_defined_name = this->declare_parameter("user_defined_name", user_defined_name);
@@ -147,6 +135,18 @@ public:
         camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address);
 
         // camera parameters
+        camera_settings_path = this->declare_parameter("camera_settings_pfs", camera_settings_path);
+        if (!camera_settings_path.empty()) {
+            try {
+                Pylon::CFeaturePersistence::Load(camera_settings_path.c_str(), &camera->camera->GetNodeMap(), true);
+            } catch (GenICam::RuntimeException &e) {
+                RCLCPP_WARN(this->get_logger(), 
+                    "Loading camera settings from PFS file %s failed: %s", 
+                    camera_settings_path.c_str(), e.what()
+                );
+            }
+        }
+        
         camera->grab_timeout_ms = this->declare_parameter("grab_timeout", camera->grab_timeout_ms);
         RCLCPP_INFO(this->get_logger(), "grab_timeout is %d ms.", camera->grab_timeout_ms);
 
@@ -155,13 +155,15 @@ public:
         if (!camera_calibration_parsers::readCalibration(camera_info_path, camera_name, camera_info_msg)) {
             RCLCPP_WARN(get_logger(), "camera_info was not loaded. image_proc will not perform rectification automatically.");
         }
-
+        
         image_publisher = image_transport::create_camera_publisher(this, "image");
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
         RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
-        
+
+        // Camera fully set-up. Now start grabbing.
+        camera->camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
         grabbing_thread = std::make_unique<std::thread>([this](){
             // have the main loop in a thread since blocking functions and rclcpp::spin() are mutually exclusive
             // see https://answers.ros.org/question/374087/
