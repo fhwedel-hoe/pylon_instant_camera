@@ -46,36 +46,28 @@ public:
     int grab_timeout_ms = 1000;
     PylonCamera(std::string full_name, std::string user_defined_name, std::string ip_address) {
         Pylon::PylonInitialize();
-        try {
-            // Create an instant camera object with the camera device found first or found by specified parameters.
-            if (!full_name.empty() && !user_defined_name.empty() && !ip_address.empty()) {
-                camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
-            } else {
-                Pylon::CDeviceInfo di;
-                if (!full_name.empty()) { 
-                    di.SetFullName(full_name.c_str()); 
-                }
-                if (!user_defined_name.empty()) { 
-                    di.SetUserDefinedName(user_defined_name.c_str()); 
-                }
-                if (!ip_address.empty()) { 
-                    di.SetIpAddress(ip_address.c_str()); 
-                }
-                camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateDevice(di));
+        // Create an instant camera object with the camera device found first or found by specified parameters.
+        if (!full_name.empty() && !user_defined_name.empty() && !ip_address.empty()) {
+            camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
+        } else {
+            Pylon::CDeviceInfo di;
+            if (!full_name.empty()) { 
+                di.SetFullName(full_name.c_str()); 
             }
-            camera->Open();
-            // provide Pylon with sensor_msgs::msg::Image buffers
-            camera->SetBufferFactory(new ImageBufferFactory());
-            // The parameter MaxNumBuffer can be used to control the count of buffers
-            // allocated for grabbing. The default value of this parameter is 10.
-            camera->MaxNumBuffer = 5;
-        } catch (const GenICam_3_1_Basler_pylon::RuntimeException & e) {
-            std::cerr << e.what() << std::endl;
-            throw e;
-        } catch (const GenICam_3_1_Basler_pylon::AccessException & e) {
-            std::cerr << e.what() << std::endl;
-            throw e;
+            if (!user_defined_name.empty()) { 
+                di.SetUserDefinedName(user_defined_name.c_str()); 
+            }
+            if (!ip_address.empty()) { 
+                di.SetIpAddress(ip_address.c_str()); 
+            }
+            camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateDevice(di));
         }
+        camera->Open();
+        // provide Pylon with sensor_msgs::msg::Image buffers
+        camera->SetBufferFactory(new ImageBufferFactory());
+        // The parameter MaxNumBuffer can be used to control the count of buffers
+        // allocated for grabbing. The default value of this parameter is 10.
+        camera->MaxNumBuffer = 5;
     }
     ~PylonCamera() {
         delete camera;
@@ -170,7 +162,9 @@ public:
             while(rclcpp::ok()) {
                 try {
                     this->grab_and_publish();
-                } catch (const GenICam_3_1_Basler_pylon::TimeoutException & e) {
+                } catch (const std::runtime_error & e) { // TODO: use more specific exception class
+                    RCLCPP_WARN(get_logger(), e.what());
+                } catch (const GenICam::TimeoutException & e) {
                     RCLCPP_WARN(get_logger(), "Timeout while grabbing.");
                 }
             }
@@ -205,7 +199,10 @@ private:
                          "This driver does not know the corresponding ROS image encoding. "\
                          "Please add your preferred pixel type to the mapping code and file a pull request.",
                          pixel_type_str.c_str());
-            throw std::runtime_error("Unknown Pylon pixel type.");
+            // I would really like to fail critically on unrecoverable errors, 
+            // but throwing exeptions in threads in a composable node
+            // messes up the node container
+            //throw std::runtime_error("Unknown Pylon pixel type.");
         }
         RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
         return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
