@@ -149,6 +149,8 @@ public:
         }
         
         image_publisher = image_transport::create_camera_publisher(this, "image");
+        // TODO: if PixelType is bayer, topic should be image_raw,
+        //       according to https://github.com/ros-perception/image_pipeline/blob/ros2/image_proc/src/debayer.cpp
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
