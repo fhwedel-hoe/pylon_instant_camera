@@ -154,7 +154,10 @@ public:
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
-        RCLCPP_INFO(this->get_logger(), "Expected frame-rate is %f.", camera->camera->ResultingFrameRate());
+        if (GenApi::IsAvailable(camera->camera->ResultingFrameRate))
+            RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate is %f.", camera->camera->ResultingFrameRate());
+        if (GenApi::IsAvailable(camera->camera->ResultingFrameRateAbs))
+            RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate (ABS) is %f.", camera->camera->ResultingFrameRateAbs());
 
         // Camera fully set-up. Now start grabbing.
         camera->camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
