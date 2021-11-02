@@ -22,9 +22,9 @@ public:
     ~ImageBufferFactory() {
     }
     virtual void AllocateBuffer(size_t bufferSize, void **pCreatedBuffer, intptr_t &bufferContext) {
-        sensor_msgs::msg::Image * image_message_ptr = new sensor_msgs::msg::Image();
-        image_message_ptr->data.resize(bufferSize);
-        *pCreatedBuffer = image_message_ptr->data.data();
+        sensor_msgs::msg::Image::UniquePtr * image_message_ptr = new sensor_msgs::msg::Image::UniquePtr(new sensor_msgs::msg::Image());
+        (*image_message_ptr)->data.resize(bufferSize);
+        *pCreatedBuffer = (*image_message_ptr)->data.data();
         bufferContext = reinterpret_cast<intptr_t>(image_message_ptr);
     }
     virtual void FreeBuffer(void *, intptr_t bufferContext) {
@@ -32,8 +32,8 @@ public:
     }
     virtual void DestroyBufferFactory() {
     }
-    static sensor_msgs::msg::Image * ReinterpretBufferContext(intptr_t bufferContext) {
-        return reinterpret_cast<sensor_msgs::msg::Image *>(bufferContext);
+    static sensor_msgs::msg::Image::UniquePtr * ReinterpretBufferContext(intptr_t bufferContext) {
+        return reinterpret_cast<sensor_msgs::msg::Image::UniquePtr *>(bufferContext);
     }
 };
 
@@ -154,10 +154,12 @@ public:
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
-        if (GenApi::IsAvailable(camera->camera->ResultingFrameRate))
+        if (GenApi::IsAvailable(camera->camera->ResultingFrameRate)) {
             RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate is %f.", camera->camera->ResultingFrameRate());
-        if (GenApi::IsAvailable(camera->camera->ResultingFrameRateAbs))
+        }
+        if (GenApi::IsAvailable(camera->camera->ResultingFrameRateAbs)) {
             RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate (ABS) is %f.", camera->camera->ResultingFrameRateAbs());
+        }
 
         // Camera fully set-up. Now start grabbing.
         camera->camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
@@ -176,20 +178,22 @@ public:
         });
     }
     void grab_and_publish() {
-        sensor_msgs::msg::Image * img_msg = pylon_result_to_image_message(camera->grab_frame());
-        img_msg->header.stamp = this->now();
-        img_msg->header.frame_id = frame_id;
-        camera_info_msg.header.stamp = img_msg->header.stamp;
-        camera_info_msg.header.frame_id = img_msg->header.frame_id;
-        image_publisher.publish(*img_msg, camera_info_msg);
+        sensor_msgs::msg::Image::UniquePtr * img_ptr = pylon_result_to_image_message(camera->grab_frame());
+        sensor_msgs::msg::Image::UniquePtr & img = *img_ptr;
+        img->header.stamp = this->now();
+        img->header.frame_id = frame_id;
+        camera_info_msg.header.stamp = img->header.stamp;
+        camera_info_msg.header.frame_id = img->header.frame_id;
+        image_publisher.publish(*img, camera_info_msg);
     }
 private:
     const std::map<Pylon::EPixelType, const char *> Pylon2ROS {
         {Pylon::EPixelType::PixelType_BayerRG8, sensor_msgs::image_encodings::BAYER_RGGB8},
         {Pylon::EPixelType::PixelType_RGB8packed, sensor_msgs::image_encodings::RGB8}
     };
-    sensor_msgs::msg::Image * pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
-        sensor_msgs::msg::Image * img = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
+    sensor_msgs::msg::Image::UniquePtr * pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
+        sensor_msgs::msg::Image::UniquePtr * img_ptr = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
+        sensor_msgs::msg::Image::UniquePtr & img = *img_ptr;
         img->width = ptrGrabResult->GetWidth();
         img->height = ptrGrabResult->GetHeight();
         size_t stride;
@@ -210,7 +214,7 @@ private:
             //throw std::runtime_error("Unknown Pylon pixel type.");
         }
         RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
-        return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
+        return img_ptr; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
     }
 };
 
