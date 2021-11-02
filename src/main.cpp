@@ -22,9 +22,9 @@ public:
     ~ImageBufferFactory() {
     }
     virtual void AllocateBuffer(size_t bufferSize, void **pCreatedBuffer, intptr_t &bufferContext) {
-        sensor_msgs::msg::Image::UniquePtr * image_message_ptr = new sensor_msgs::msg::Image::UniquePtr(new sensor_msgs::msg::Image());
-        (*image_message_ptr)->data.resize(bufferSize);
-        *pCreatedBuffer = (*image_message_ptr)->data.data();
+        sensor_msgs::msg::Image * image_message_ptr = new sensor_msgs::msg::Image();
+        image_message_ptr->data.resize(bufferSize);
+        *pCreatedBuffer = image_message_ptr->data.data();
         bufferContext = reinterpret_cast<intptr_t>(image_message_ptr);
     }
     virtual void FreeBuffer(void *, intptr_t bufferContext) {
@@ -32,8 +32,8 @@ public:
     }
     virtual void DestroyBufferFactory() {
     }
-    static sensor_msgs::msg::Image::UniquePtr * ReinterpretBufferContext(intptr_t bufferContext) {
-        return reinterpret_cast<sensor_msgs::msg::Image::UniquePtr *>(bufferContext);
+    static sensor_msgs::msg::Image * ReinterpretBufferContext(intptr_t bufferContext) {
+        return reinterpret_cast<sensor_msgs::msg::Image *>(bufferContext);
     }
 };
 
@@ -178,30 +178,31 @@ public:
         });
     }
     void grab_and_publish() {
-        sensor_msgs::msg::Image::UniquePtr * img_ptr = pylon_result_to_image_message(camera->grab_frame());
-        sensor_msgs::msg::Image::UniquePtr & img = *img_ptr;
-        img->header.stamp = this->now();
-        img->header.frame_id = frame_id;
-        camera_info_msg.header.stamp = img->header.stamp;
-        camera_info_msg.header.frame_id = img->header.frame_id;
-        image_publisher.publish(*img, camera_info_msg);
+        sensor_msgs::msg::Image::UniquePtr img_uptr(
+            pylon_result_to_image_message(camera->grab_frame()),
+                    [](sensor_msgs::msg::Image_<std::allocator<void>>){}
+        );
+        img_uptr->header.stamp = this->now();
+        img_uptr->header.frame_id = frame_id;
+        camera_info_msg.header.stamp = img_uptr->header.stamp;
+        camera_info_msg.header.frame_id = img_uptr->header.frame_id;
+        image_publisher.publish(*img_uptr, camera_info_msg);
     }
 private:
     const std::map<Pylon::EPixelType, const char *> Pylon2ROS {
         {Pylon::EPixelType::PixelType_BayerRG8, sensor_msgs::image_encodings::BAYER_RGGB8},
         {Pylon::EPixelType::PixelType_RGB8packed, sensor_msgs::image_encodings::RGB8}
     };
-    sensor_msgs::msg::Image::UniquePtr * pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
-        sensor_msgs::msg::Image::UniquePtr * img_ptr = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
-        sensor_msgs::msg::Image::UniquePtr & img = *img_ptr;
-        img->width = ptrGrabResult->GetWidth();
-        img->height = ptrGrabResult->GetHeight();
+    sensor_msgs::msg::Image * pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
+        sensor_msgs::msg::Image * img_ptr = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
+        img_ptr->width = ptrGrabResult->GetWidth();
+        img_ptr->height = ptrGrabResult->GetHeight();
         size_t stride;
         ptrGrabResult->GetStride(stride);
-        img->step = stride;
+        img_ptr->step = stride;
         const Pylon::EPixelType pixel_type = ptrGrabResult->GetPixelType();
         try {
-            img->encoding = Pylon2ROS.at(pixel_type);
+            img_ptr->encoding = Pylon2ROS.at(pixel_type);
         } catch (std::out_of_range &) {
             const std::string pixel_type_str(Pylon::CPixelTypeMapper::GetNameByPixelType(pixel_type));
             RCLCPP_ERROR(this->get_logger(), "Captured image has Pylon pixel type %s. "\
@@ -213,7 +214,9 @@ private:
             // messes up the node container
             //throw std::runtime_error("Unknown Pylon pixel type.");
         }
-        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
+        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.",
+            img_ptr->width, img_ptr->height, stride, ptrGrabResult->GetBufferSize()
+        );
         return img_ptr; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
     }
 };
