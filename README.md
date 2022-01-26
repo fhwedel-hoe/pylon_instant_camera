@@ -50,13 +50,39 @@ Launch file based on [this example](https://github.com/ros2/demos/blob/foxy/comp
                         parameters = [{
                             'camera_settings_pfs': 'settings.pfs',
                             'camera_info_yaml': 'camera_calibration.yaml'
-                            }]
+                            }],
+                        remappings=[
+                            ('image', 'image_raw'),
+                        ]
                     ),
                     ComposableNode(
-                        name = 'pylon_camera_rectify',
-                        namespace = 'pylon_camera_node',
-                        package = 'image_proc',
-                        plugin = 'image_proc::RectifyNode'
+                        package='image_proc',
+                        plugin='image_proc::DebayerNode',
+                        name='debayer_node',
+                        namespace='pylon_camera_node',
+                    ),
+                    ComposableNode(
+                        package='image_proc',
+                        plugin='image_proc::RectifyNode',
+                        name='pylon_camera_rectify_mono',
+                        namespace='pylon_camera_node',
+                        # Remap subscribers and publishers
+                        remappings=[
+                            ('image', 'image_mono'),
+                            ('camera_info', 'camera_info'),
+                            ('image_rect', 'image_rect')
+                        ],
+                    ),
+                    ComposableNode(
+                        package='image_proc',
+                        plugin='image_proc::RectifyNode',
+                        name='pylon_camera_rectify_color',
+                        namespace='pylon_camera_node',
+                        # Remap subscribers and publishers
+                        remappings=[
+                            ('image', 'image_color'),
+                            ('image_rect', 'image_rect_color')
+                        ],
                     )
                 ]
         )
