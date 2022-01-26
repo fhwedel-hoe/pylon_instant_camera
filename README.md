@@ -28,7 +28,7 @@ Camera calibration data will be loaded from `camera_calibration.yaml` and publis
 
 #### within a Composit node
 
-Launch file based on [this example](https://github.com/ros2/demos/blob/foxy/composition/launch/composition_demo.launch.py), with camera image rectification:
+Launch file based on [this example](https://github.com/ros2/demos/blob/foxy/composition/launch/composition_demo.launch.py), with software debayer and camera image rectification:
 
     import launch
     from launch_ros.actions import ComposableNodeContainer
@@ -50,17 +50,41 @@ Launch file based on [this example](https://github.com/ros2/demos/blob/foxy/comp
                         parameters = [{
                             'camera_settings_pfs': 'settings.pfs',
                             'camera_info_yaml': 'camera_calibration.yaml'
-                            }]
+                            }],
+                        remappings=[
+                            ('image', 'image_raw'),
+                        ]
                     ),
                     ComposableNode(
-                        name = 'pylon_camera_rectify',
-                        namespace = 'pylon_camera_node',
-                        package = 'image_proc',
-                        plugin = 'image_proc::RectifyNode'
+                        package='image_proc',
+                        plugin='image_proc::DebayerNode',
+                        name='debayer_node',
+                        namespace='pylon_camera_node',
+                    ),
+                    ComposableNode(
+                        package='image_proc',
+                        plugin='image_proc::RectifyNode',
+                        name='pylon_camera_rectify_mono',
+                        namespace='pylon_camera_node',
+                        remappings=[
+                            ('image', 'image_mono'),
+                            ('camera_info', 'camera_info'),
+                            ('image_rect', 'image_rect')
+                        ],
+                    ),
+                    ComposableNode(
+                        package='image_proc',
+                        plugin='image_proc::RectifyNode',
+                        name='pylon_camera_rectify_color',
+                        namespace='pylon_camera_node',
+                        remappings=[
+                            ('image', 'image_color'),
+                            ('image_rect', 'image_rect_color')
+                        ],
                     )
                 ]
         )
-        return launch.LaunchDescription([ image_processing])
+        return launch.LaunchDescription([image_processing])
 
 Viewing the unprocessed camera image is possible by manually loading the ShowImage tool like [this](https://docs.ros.org/en/foxy/Tutorials/Composition.html):
 
@@ -74,6 +98,8 @@ The pylon Viewer included in the [pylon SDK](https://www.baslerweb.com/en/produc
     # {05D8C294-F295-4dfb-9D01-096BD04049F4}
     # GenApi persistence file (version 3.1.0)
     PixelFormat	RGB8
+
+With the pixel format RGB8, you do not need the DebayerNode and remappings mentioned in the example above.
 
 ### Known Issues
 
