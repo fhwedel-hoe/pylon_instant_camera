@@ -124,7 +124,12 @@ public:
         user_defined_name = this->declare_parameter("user_defined_name", user_defined_name);
         ip_address = this->declare_parameter("ip_address", ip_address);
         RCLCPP_INFO(this->get_logger(), "Constructing camera object for full name [%s], user defined name [%s], IP address [%s].", full_name.c_str(), user_defined_name.c_str(), ip_address.c_str());
-        camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address);
+        try {
+            camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address);
+        } catch (const GenICam::RuntimeException & e) {
+            RCLCPP_ERROR(get_logger(), "Could not construct PylonCamera instance: %s", e.what());
+            throw e;
+        }
 
         // camera parameters
         camera_settings_path = this->declare_parameter("camera_settings_pfs", camera_settings_path);
