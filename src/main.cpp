@@ -127,7 +127,7 @@ public:
         try {
             camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address);
         } catch (const GenICam::RuntimeException & e) {
-            RCLCPP_ERROR(get_logger(), "Could not construct PylonCamera instance: %s", e.what());
+            RCLCPP_ERROR(get_logger(), "Exception in PylonCamera constructor: %s", e.what());
             throw e;
         }
 
@@ -153,16 +153,26 @@ public:
             RCLCPP_WARN(get_logger(), "camera_info was not loaded. image_proc will not perform rectification automatically.");
         }
         
-        image_publisher = image_transport::create_camera_publisher(this, "image");
-        // TODO: if PixelType is bayer, topic should be image_raw,
-        //       according to https://github.com/ros-perception/image_pipeline/blob/ros2/image_proc/src/debayer.cpp
+        std::string publish_topic = "image";
+        Pylon::CPixelTypeMapper pixel_type_mapper(&camera->camera->PixelFormat);
+        const Pylon::EPixelType pixel_type = pixel_type_mapper.GetPylonPixelTypeFromNodeValue(camera->camera->PixelFormat.GetIntValue());
+        if (Pylon::IsBayer(pixel_type)) {
+            // if PixelType is bayer, topic should be image_raw, according to
+            // https://github.com/ros-perception/image_pipeline/blob/ros2/image_proc/src/debayer.cpp
+            publish_topic = "image_raw";
+            RCLCPP_INFO(this->get_logger(), "Input pixel type is bayer.");
+        }
+        RCLCPP_INFO(this->get_logger(), "Output topic name is [%s].", publish_topic.c_str());
+        image_publisher = image_transport::create_camera_publisher(this, publish_topic.c_str());
         
         // log some information
         RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
-        if (GenApi::IsAvailable(camera->camera->ResultingFrameRate))
+        if (GenApi::IsAvailable(camera->camera->ResultingFrameRate)) {
             RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate is %f.", camera->camera->ResultingFrameRate());
-        if (GenApi::IsAvailable(camera->camera->ResultingFrameRateAbs))
+        }
+        if (GenApi::IsAvailable(camera->camera->ResultingFrameRateAbs)) {
             RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate (ABS) is %f.", camera->camera->ResultingFrameRateAbs());
+        }
 
         // Camera fully set-up. Now start grabbing.
         camera->camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);

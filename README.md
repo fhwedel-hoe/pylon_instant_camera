@@ -10,6 +10,11 @@ As of writing, the official driver does not support ROS2, yet. Check the status 
 
 ### Usage
 
+#### Topic
+
+If the camera provides pixels in bayer pattern (raw), the default topic name is `image_raw`.  
+If the camera provides pixels in RGB (color) or MONO (grayscale), the default topic name is `image`.  
+
 #### as a node
 
 Start a node which publishes image data on topic `/image`.  
@@ -17,13 +22,13 @@ The camera will be opened using its default parameters:
 
     ros2 run pylon_instant_camera node
 
-Start a node which publishes image data on topic `/pylon_camera/image`.  
+Start a node which publishes image data on topic `/pylon_camera/image_raw`.  
 The camera will be opened and configured with the feature-set stored in `settings.pfs`.  
 Camera calibration data will be loaded from `camera_calibration.yaml` and published at `/pylon_camera/camera_info` for image rectification.
 
     ros2 run pylon_instant_camera node --ros-args \
     -r __ns:=/pylon_camera \
-    --param camera_settings_pfs:=settings.pfs \
+    --param camera_settings_pfs:=settings_bayer.pfs \
     --param camera_info_yaml:=camera_calibration.yaml
 
 #### within a Composit node
@@ -50,16 +55,19 @@ Launch file based on [this example](https://github.com/ros2/demos/blob/foxy/comp
                         parameters = [{
                             'camera_settings_pfs': 'settings.pfs',
                             'camera_info_yaml': 'camera_calibration.yaml'
-                            }],
-                        remappings=[
-                            ('image', 'image_raw'),
-                        ]
+                            }]
                     ),
                     ComposableNode(
                         package='image_proc',
                         plugin='image_proc::DebayerNode',
                         name='debayer_node',
-                        namespace='pylon_camera_node',
+                        namespace='pylon_camera_node'
+                    ),
+                    ComposableNode(
+                        package='image_proc',
+                        plugin='image_proc::RectifyNode',
+                        name='pylon_camera_rectify_color',
+                        namespace='pylon_camera_node'
                     ),
                     ComposableNode(
                         package='image_proc',
@@ -67,19 +75,7 @@ Launch file based on [this example](https://github.com/ros2/demos/blob/foxy/comp
                         name='pylon_camera_rectify_mono',
                         namespace='pylon_camera_node',
                         remappings=[
-                            ('image', 'image_mono'),
-                            ('camera_info', 'camera_info'),
-                            ('image_rect', 'image_rect')
-                        ],
-                    ),
-                    ComposableNode(
-                        package='image_proc',
-                        plugin='image_proc::RectifyNode',
-                        name='pylon_camera_rectify_color',
-                        namespace='pylon_camera_node',
-                        remappings=[
-                            ('image', 'image_color'),
-                            ('image_rect', 'image_rect_color')
+                            ('image', 'image_mono')
                         ],
                     )
                 ]
