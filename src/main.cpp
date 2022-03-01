@@ -13,6 +13,16 @@
 #include <pylon/DeviceInfo.h>
 #pragma GCC diagnostic pop
 
+namespace std {
+    template<>
+    class default_delete<sensor_msgs::msg::Image> {
+    public:
+        void operator()(sensor_msgs::msg::Image *) const {
+            std::cerr << "default_delete is not deleting an Image." << std::endl;
+        }
+    };
+}
+
 namespace pylon_instant_camera {
 
 // this BufferFactory pre-allocates sensor_msgs::msg::Image memory
@@ -26,6 +36,7 @@ public:
         image_message_ptr->data.resize(bufferSize);
         *pCreatedBuffer = image_message_ptr->data.data();
         bufferContext = reinterpret_cast<intptr_t>(image_message_ptr);
+        std::cerr << "Created Image at " << image_message_ptr << " with data starting at " << static_cast<void*>(&image_message_ptr->data[0]) << "." << std::endl;
     }
     virtual void FreeBuffer(void *, intptr_t bufferContext) {
         delete ReinterpretBufferContext(bufferContext);
@@ -89,6 +100,17 @@ public:
     }
 };
 
+class NoDeleter : public std::default_delete<sensor_msgs::msg::Image> {
+    public:
+    NoDeleter() { std::cout << "NoDeleter ctor \n"; }
+    NoDeleter(const NoDeleter&) : std::default_delete<sensor_msgs::msg::Image>() { std::cout << "NoDeleter copy ctor\n"; }
+    NoDeleter(NoDeleter&) : std::default_delete<sensor_msgs::msg::Image>() { std::cout << "NoDeleter non-const copy ctor\n";}
+    NoDeleter(NoDeleter&&) { std::cout << "NoDeleter move ctor \n"; }
+    void operator()(sensor_msgs::msg::Image *) const /*override*/ {
+        std::cerr << "NoDeleter is not deleting an Image." << std::endl;
+    }
+};
+
 class PylonCameraNode : public rclcpp::Node {
 private:
     // the camera
@@ -105,8 +127,13 @@ private:
     std::string user_defined_name;
     std::string ip_address;
 
-    // publisher
-    image_transport::CameraPublisher image_publisher;
+    // publishers
+    // for compatibility reasons, these two emulate the topics
+    // usually provided by an image_transport::CameraPublisher
+    // as of writing, image_transport does not support zero-copy communication
+    // see https://github.com/ros-perception/image_common/issues/212
+    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr info_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher;
     
     // background thread
     std::unique_ptr<std::thread> grabbing_thread;
@@ -115,6 +142,10 @@ public:
     PylonCameraNode(const rclcpp::NodeOptions & options) : 
         Node("pylon_instant_camera", options)
     {
+        if (!options.use_intra_process_comms()) {
+            throw std::runtime_error("Must use use_intra_process_comms!");
+        }
+
         // ros2 parameters
         frame_id = this->declare_parameter("frame_id", frame_id);
         camera_info_path = this->declare_parameter("camera_info_yaml", camera_info_path);
@@ -148,7 +179,8 @@ public:
             RCLCPP_WARN(get_logger(), "camera_info was not loaded. image_proc will not perform rectification automatically.");
         }
         
-        image_publisher = image_transport::create_camera_publisher(this, "image");
+        info_publisher = this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", 1);
+        image_publisher = this->create_publisher<sensor_msgs::msg::Image>("image", 1);
         // TODO: if PixelType is bayer, topic should be image_raw,
         //       according to https://github.com/ros-perception/image_pipeline/blob/ros2/image_proc/src/debayer.cpp
         
@@ -177,11 +209,22 @@ public:
     }
     void grab_and_publish() {
         sensor_msgs::msg::Image * img_msg = pylon_result_to_image_message(camera->grab_frame());
+        std::cerr << "Publishing Image at   " << img_msg << " with data starting at " << static_cast<void*>(&img_msg->data[0]) << "." << std::endl;
         img_msg->header.stamp = this->now();
         img_msg->header.frame_id = frame_id;
+        //auto deleter = [](sensor_msgs::msg::Image*){ std::cerr << "NoDeleter is not deleting an Image." << std::endl; };
+        //std::unique_ptr<sensor_msgs::msg::Image, decltype(deleter)> img_msg_ptr(img_msg, deleter);
+        // ^^ no known conversion for argument 1 from ‘unique_ptr<[...],pylon_instant_camera::PylonCameraNode::grab_and_publish()::<lambda(sensor_msgs::msg::Image*)>>’ to ‘unique_ptr<[...],std::default_delete<sensor_msgs::msg::Image_<std::allocator<void> > >>
+        // no known conversion for argument 1 from ‘unique_ptr<[...],pylon_instant_camera::PylonCameraNode::grab_and_publish()::<lambda(sensor_msgs::msg::Image_<std::allocator<void> >*)>>’ to ‘unique_ptr<[...],std::default_delete<sensor_msgs::msg::Image_<std::allocator<void> > >
+        //NoDeleter d;
+        //d(1);
+        //std::unique_ptr<sensor_msgs::msg::Image, NoDeleter> img_msg_ptr(img_msg, d);
+        std::unique_ptr<sensor_msgs::msg::Image> img_msg_ptr(img_msg);
+        image_publisher->publish(std::move(img_msg_ptr));
+        //image_publisher->publish(*img_msg);
         camera_info_msg.header.stamp = img_msg->header.stamp;
         camera_info_msg.header.frame_id = img_msg->header.frame_id;
-        image_publisher.publish(*img_msg, camera_info_msg);
+        info_publisher->publish(camera_info_msg);
     }
 private:
     const std::map<Pylon::EPixelType, const char *> Pylon2ROS {

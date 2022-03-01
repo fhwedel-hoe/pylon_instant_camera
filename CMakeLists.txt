@@ -42,4 +42,33 @@ install(TARGETS
   DESTINATION lib
 )
 
+add_library(AddressPrinter SHARED src/addressprinter.cpp)
+ament_target_dependencies(AddressPrinter 
+    rclcpp
+    rclcpp_components
+    sensor_msgs
+)
+rclcpp_components_register_node(AddressPrinter PLUGIN "AddressPrinter" EXECUTABLE "addressprinter")
+install(TARGETS 
+  AddressPrinter
+  DESTINATION lib
+)
+
+add_library(StaticBufferPublisher SHARED src/staticbufferpublisher.cpp)
+ament_target_dependencies(StaticBufferPublisher 
+    rclcpp
+    rclcpp_components
+    sensor_msgs
+)
+rclcpp_components_register_node(StaticBufferPublisher PLUGIN "StaticBufferPublisher" EXECUTABLE "staticbufferpublisher")
+install(TARGETS 
+  StaticBufferPublisher
+  DESTINATION lib
+)
+
+# install launch files
+install(DIRECTORY launch config
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_package()
