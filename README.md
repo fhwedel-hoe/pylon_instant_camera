@@ -1,12 +1,11 @@
 Experimental ROS2 node for access to Basler camera via pylon CBaslerUniversalInstantCamera API. 
 
-Supports *low-latency, high-speed, arbitrary framerate, free-running* mode.
+Supports *low-latency, high-speed, arbitrary framerate, free-running* mode.  
+At time of writing, the official driver does not support acquisition overlap. Usage of the software trigger is [hard-coded](https://github.com/basler/pylon-ros-camera/blob/ed094fad02eed38af830a052c7420befc6483ef3/pylon_camera/include/pylon_camera/internal/impl/pylon_camera_dart.hpp#L94), effectively halving the maximum frame-rate.
 
 Supports USB and GigE cameras.
 
 Tested on Ubuntu 20.04 "Focal", ROS2 "foxy" and a Basler daA1280-54uc camera.
-
-As of writing, the official driver does not support ROS2, yet. Check the status [here](https://github.com/basler/pylon-ros-camera/issues/58).
 
 ### Usage
 
@@ -99,8 +98,14 @@ With the pixel format RGB8, you do not need the DebayerNode and remappings menti
 
 ### Known Issues
 
+#### Payload Discarded
+
 This warning can be emitted:
 
     Payload data has been discarded. Payload data can be discarded by the camera device if the available bandwidth is insufficient.
 
 This is normal for USB connections and should only happen once after camera start.
+
+#### Performance
+
+ROS 2 does not offer a true zero-copy communication mechanism – not even via shared memory – see [discussion here](https://github.com/ros-perception/image_common/issues/212).
