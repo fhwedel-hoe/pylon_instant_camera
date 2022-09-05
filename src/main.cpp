@@ -225,7 +225,7 @@ private:
             // messes up the node container
             //throw std::runtime_error("Unknown Pylon pixel type.");
         }
-        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %i, size %i bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
+        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %zu, size %zu bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
         return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
     }
 };
