@@ -130,6 +130,8 @@ public:
             RCLCPP_ERROR(get_logger(), "Exception in PylonCamera constructor: %s", e.what());
             throw e;
         }
+        // show some device information
+        RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
 
         // camera parameters
         camera_settings_path = this->declare_parameter("camera_settings_pfs", camera_settings_path);
@@ -157,22 +159,41 @@ public:
         Pylon::CPixelTypeMapper pixel_type_mapper(&camera->camera->PixelFormat);
         const Pylon::EPixelType pixel_type = pixel_type_mapper.GetPylonPixelTypeFromNodeValue(camera->camera->PixelFormat.GetIntValue());
         if (Pylon::IsBayer(pixel_type)) {
+            RCLCPP_INFO(this->get_logger(), "Input pixel type is bayer.");
             // if PixelType is bayer, topic should be image_raw, according to
             // https://github.com/ros-perception/image_pipeline/blob/ros2/image_proc/src/debayer.cpp
             publish_topic = "image_raw";
-            RCLCPP_INFO(this->get_logger(), "Input pixel type is bayer.");
         }
         RCLCPP_INFO(this->get_logger(), "Output topic name is [%s].", publish_topic.c_str());
-        image_publisher = image_transport::create_camera_publisher(this, publish_topic.c_str());
         
-        // log some information
-        RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
+        // query framerate
+        float framerate = 0.0;
         if (GenApi::IsAvailable(camera->camera->ResultingFrameRate)) {
-            RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate is %f.", camera->camera->ResultingFrameRate());
+            framerate = camera->camera->ResultingFrameRate();
         }
         if (GenApi::IsAvailable(camera->camera->ResultingFrameRateAbs)) {
-            RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate (ABS) is %f.", camera->camera->ResultingFrameRateAbs());
+            framerate = camera->camera->ResultingFrameRateAbs();
         }
+        
+        // if framerate is known, user might want to have the message deadline adjusted
+        rmw_qos_profile_t custom_qos = rmw_qos_profile_default;
+        if (framerate > 0) {
+            RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate is %f.", framerate);
+            bool adjust_deadline = false;
+            adjust_deadline = this->declare_parameter("adjust_deadline", adjust_deadline);
+            if (adjust_deadline) {
+                uint64_t frametime_nanoseconds = 1'000'000'000.0/framerate;
+                uint64_t deadline_nanoseconds = frametime_nanoseconds; // disallow lag
+                custom_qos = rmw_qos_profile_sensor_data;
+                custom_qos.depth = 1;
+                custom_qos.deadline = {0, deadline_nanoseconds};
+                custom_qos.lifespan = {0, deadline_nanoseconds};
+                RCLCPP_INFO(this->get_logger(), "Adjusted deadline to %ld milliseconds.", deadline_nanoseconds/1'000'000);
+            }
+        }
+        
+        // create publisher
+        image_publisher = image_transport::create_camera_publisher(this, publish_topic.c_str(), custom_qos);
 
         // Camera fully set-up. Now start grabbing.
         camera->camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
