@@ -202,15 +202,14 @@ private:
     const std::map<Pylon::EPixelType, const char *> Pylon2ROS {
         {Pylon::EPixelType::PixelType_BayerRG8, sensor_msgs::image_encodings::BAYER_RGGB8},
         {Pylon::EPixelType::PixelType_RGB8packed, sensor_msgs::image_encodings::RGB8},
-        {Pylon::EPixelType::PixelType_Mono8, sensor_msgs::image_encodings::MONO8}
+        {Pylon::EPixelType::PixelType_Mono8, sensor_msgs::image_encodings::MONO8},
+        {Pylon::EPixelType::PixelType_YUV422packed, sensor_msgs::image_encodings::MONO8}
     };
     sensor_msgs::msg::Image * pylon_result_to_image_message(Pylon::CGrabResultPtr & ptrGrabResult) {
         sensor_msgs::msg::Image * img = ImageBufferFactory::ReinterpretBufferContext(ptrGrabResult->GetBufferContext());
         img->width = ptrGrabResult->GetWidth();
         img->height = ptrGrabResult->GetHeight();
-        size_t stride;
-        ptrGrabResult->GetStride(stride);
-        img->step = stride;
+        ptrGrabResult->GetStride(img->step);
         const Pylon::EPixelType pixel_type = ptrGrabResult->GetPixelType();
         try {
             img->encoding = Pylon2ROS.at(pixel_type);
@@ -225,7 +224,16 @@ private:
             // messes up the node container
             //throw std::runtime_error("Unknown Pylon pixel type.");
         }
-        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %zu, size %zu bytes, publishing.", img->width, img->height, stride, ptrGrabResult->GetBufferSize());
+        if (pixel_type == Pylon::EPixelType::PixelType_YUV422packed) {
+            Pylon::CImageFormatConverter formatConverter;
+            formatConvertor.OutputPixelFormat = Pylon::EPixelType::PixelType_Mono8;
+            CPylonImage pylonImage;
+            formatConverter.Convert(pylonImage, ptrGrabResult);
+            memcpy(img->data.data(), pylonImage->GetBuffer(), pylonImage->GetImageSize());
+            img->step = pylonImage->GetStride();
+        }
+        
+        RCLCPP_DEBUG(this->get_logger(), "Got image %ix%i, stride %zu, size %zu bytes, publishing.", img->width, img->height, img->step, ptrGrabResult->GetBufferSize() dang! would need to change the size to make a differente -.-);
         return img; // NOTE: this is NOT a bottleneck. copy-elision is strong in this one.
     }
 };
