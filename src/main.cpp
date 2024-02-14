@@ -44,10 +44,10 @@ private:
 public:
     Pylon::CBaslerUniversalInstantCamera * camera;
     int grab_timeout_ms = 1000;
-    PylonCamera(std::string full_name, std::string user_defined_name, std::string ip_address) {
+    PylonCamera(const std::string & full_name, const std::string & user_defined_name, const std::string & ip_address, const int serial_number) {
         Pylon::PylonInitialize();
         // Create an instant camera object with the camera device found first or found by specified parameters.
-        if (!full_name.empty() && !user_defined_name.empty() && !ip_address.empty()) {
+        if (!full_name.empty() && !user_defined_name.empty() && !ip_address.empty() && serial_number == 0) {
             camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice());
         } else {
             Pylon::CDeviceInfo di;
@@ -59,6 +59,9 @@ public:
             }
             if (!ip_address.empty()) { 
                 di.SetIpAddress(ip_address.c_str()); 
+            }
+            if (serial_number != 0) {
+                di.SetSerialNumber(std::to_string(serial_number).c_str());
             }
             camera = new Pylon::CBaslerUniversalInstantCamera(Pylon::CTlFactory::GetInstance().CreateDevice(di));
         }
@@ -104,6 +107,7 @@ private:
     std::string full_name;
     std::string user_defined_name;
     std::string ip_address;
+    int serial_number; // should be a string, but https://answers.ros.org/question/236326/running-ros-node-with-a-numeric-parameter-passed-as-string-doesnt-work/ is still a problem
 
     // publisher
     image_transport::CameraPublisher image_publisher;
@@ -123,9 +127,15 @@ public:
         full_name = this->declare_parameter("full_name", full_name);
         user_defined_name = this->declare_parameter("user_defined_name", user_defined_name);
         ip_address = this->declare_parameter("ip_address", ip_address);
-        RCLCPP_INFO(this->get_logger(), "Constructing camera object for full name [%s], user defined name [%s], IP address [%s].", full_name.c_str(), user_defined_name.c_str(), ip_address.c_str());
+        serial_number = this->declare_parameter("serial_number", serial_number);
+
+        RCLCPP_INFO(
+            this->get_logger(), 
+            "Constructing camera object for full name [%s], user defined name [%s], IP address [%s], serial number [%d].", 
+            full_name.c_str(), user_defined_name.c_str(), ip_address.c_str(), serial_number
+        );
         try {
-            camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address);
+            camera = std::make_unique<PylonCamera>(full_name, user_defined_name, ip_address, serial_number);
         } catch (const GenICam::RuntimeException & e) {
             RCLCPP_ERROR(get_logger(), "Exception in PylonCamera constructor: %s", e.what());
             throw e;
@@ -166,7 +176,14 @@ public:
         image_publisher = image_transport::create_camera_publisher(this, publish_topic.c_str());
         
         // log some information
-        RCLCPP_INFO(this->get_logger(), "Using device [%s] with full name [%s] and user defined name [%s].", camera->camera->GetDeviceInfo().GetModelName().c_str(), camera->camera->GetDeviceInfo().GetFullName().c_str(), camera->camera->GetDeviceInfo().GetUserDefinedName().c_str());
+        RCLCPP_INFO(
+            this->get_logger(), 
+            "Using device [%s] with full name [%s], user defined name [%s] and serial number [%s].", 
+            camera->camera->GetDeviceInfo().GetModelName().c_str(), 
+            camera->camera->GetDeviceInfo().GetFullName().c_str(), 
+            camera->camera->GetDeviceInfo().GetUserDefinedName().c_str(),
+            camera->camera->GetDeviceInfo().GetSerialNumber().c_str()
+        );
         if (GenApi::IsAvailable(camera->camera->ResultingFrameRate)) {
             RCLCPP_INFO(this->get_logger(), "Expected resulting frame-rate is %f.", camera->camera->ResultingFrameRate());
         }
