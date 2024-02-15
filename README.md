@@ -1,11 +1,20 @@
-Experimental ROS2 node for access to Basler camera via pylon CBaslerUniversalInstantCamera API.
+Experimental ROS2 node for access to Basler camera via pylon CBaslerUniversalInstantCamera API.  
+Supports USB and GigE cameras. Tested with a Basler daA1280-54uc camera.  
+Known to work on Ubuntu 22.04 "Jammy" with ROS2 "humble".
 
 Supports *low-latency, high-speed, arbitrary framerate, free-running* mode.  
-At time of writing, the official driver does not support acquisition overlap.
-Usage of the software trigger is [hard-coded](https://github.com/basler/pylon-ros-camera/blob/ed094fad02eed38af830a052c7420befc6483ef3/pylon_camera/include/pylon_camera/internal/impl/pylon_camera_dart.hpp#L94), effectively halving the maximum frame-rate.
 
-Supports USB and GigE cameras. Tested with a Basler daA1280-54uc camera.
-Known to work on Ubuntu 22.04 "Jammy" with ROS2 "humble".
+At time of writing, the official driver does not support "acquisition overlap".  
+Usage of the software trigger is [hard-coded](https://github.com/basler/pylon-ros-camera/blob/eb4ca3f/pylon_camera/include/pylon_camera/internal/impl/pylon_camera_dart.hpp#L94), effectively halving the maximum frame-rate.
+
+Some background information and discussion:
+
+* https://github.com/magazino/pylon_camera/issues/25
+* https://github.com/basler/pylon-ros-camera/issues/21
+* https://github.com/basler/pylon-ros-camera/issues/28
+* https://github.com/basler/pylon-ros-camera/issues/29
+* https://github.com/basler/pylon-ros-camera/issues/147
+* https://github.com/basler/pylon-ros-camera/issues/200
 
 ### Usage
 
@@ -14,14 +23,16 @@ Known to work on Ubuntu 22.04 "Jammy" with ROS2 "humble".
 If the camera provides pixels in bayer pattern (raw), the default topic name is `image_raw`.  
 If the camera provides pixels in RGB (color) or MONO (grayscale), the default topic name is `image`.  
 
-#### As a Node
+#### As a Node (default)
 
-Start a node which publishes image data on topic `/image`.  
+Starts a node which publishes image data on topic `/image`.  
 The camera will be opened using its default parameters:
 
     ros2 run pylon_instant_camera node
 
-Start a node which publishes image data on topic `/pylon_camera/image_raw`.  
+#### As a Node (advanced)
+
+Starts a node which publishes image data on topic `/pylon_camera/image_raw`.  
 The camera will be opened and configured with the feature-set stored in `settings.pfs`.  
 Camera calibration data will be loaded from `camera_calibration.yaml` and published at `/pylon_camera/camera_info` for image rectification.
 
