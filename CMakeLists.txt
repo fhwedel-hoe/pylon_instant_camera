@@ -13,23 +13,15 @@ find_package(rclcpp_components REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(camera_calibration_parsers REQUIRED)
 
-find_package(Pylon QUIET)
-if (NOT ${Pylon_FOUND})
-    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindPylon.cmake")
-endif()
-if (NOT ${Pylon_FOUND})
-    message(FATAL "Unable to find Basler Pylon SDK.")
-endif()
+# Install from https://www2.baslerweb.com/en/downloads/software-downloads/.
+find_package(Pylon 7.4 REQUIRED)
 
 set(NODE_NAME "PylonCameraNode")
 add_library(${NODE_NAME} SHARED src/main.cpp)
-target_include_directories(${NODE_NAME} PUBLIC
-    ${Pylon_INCLUDE_DIRS}
-)
 target_link_libraries(${NODE_NAME}
-    ${Pylon_LIBRARIES}
+    pylon::pylon
 )
-ament_target_dependencies(${NODE_NAME} 
+ament_target_dependencies(${NODE_NAME}
     rclcpp
     rclcpp_components
     image_transport
@@ -37,7 +29,7 @@ ament_target_dependencies(${NODE_NAME}
 )
 rclcpp_components_register_node(${NODE_NAME} PLUGIN "${PROJECT_NAME}::${NODE_NAME}" EXECUTABLE "node")
 
-install(TARGETS 
+install(TARGETS
   ${NODE_NAME}
   DESTINATION lib
 )
