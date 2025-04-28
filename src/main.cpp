@@ -107,7 +107,7 @@ private:
     std::string full_name;
     std::string user_defined_name;
     std::string ip_address;
-    int serial_number; // should be a string, but https://answers.ros.org/question/236326/running-ros-node-with-a-numeric-parameter-passed-as-string-doesnt-work/ is still a problem
+    int serial_number {0}; // should be a string, but https://answers.ros.org/question/236326/running-ros-node-with-a-numeric-parameter-passed-as-string-doesnt-work/ is still a problem
 
     // publisher
     image_transport::CameraPublisher image_publisher;
