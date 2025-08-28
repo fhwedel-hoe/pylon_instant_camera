@@ -1,6 +1,6 @@
 Experimental ROS2 node for access to Basler camera via pylon CBaslerUniversalInstantCamera API.  
 Supports USB and GigE cameras. Tested with a Basler daA1280-54uc camera.  
-Known to work on Ubuntu 22.04 "Jammy" with ROS2 "humble".
+Known to work on Ubuntu 24.04 "noble" with ROS2 "jazzy".
 
 Supports *low-latency, high-speed, arbitrary framerate, free-running* mode.  
 
