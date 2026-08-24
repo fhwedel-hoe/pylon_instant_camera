@@ -218,6 +218,7 @@ public:
 private:
     const std::map<Pylon::EPixelType, const char *> Pylon2ROS {
         {Pylon::EPixelType::PixelType_BayerRG8, sensor_msgs::image_encodings::BAYER_RGGB8},
+        {Pylon::EPixelType::PixelType_BayerBG8, sensor_msgs::image_encodings::BAYER_BGGR8},
         {Pylon::EPixelType::PixelType_RGB8packed, sensor_msgs::image_encodings::RGB8},
         {Pylon::EPixelType::PixelType_Mono8, sensor_msgs::image_encodings::MONO8}
     };
