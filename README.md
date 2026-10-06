@@ -1,11 +1,11 @@
 Experimental ROS2 node for access to Basler camera via pylon CBaslerUniversalInstantCamera API.  
 Supports USB and GigE cameras. Tested with a Basler daA1280-54uc camera.  
-Known to work on Ubuntu 24.04 "noble" with ROS2 "jazzy".
+Known to work on Ubuntu 26.04 "resolute" with ROS2 "lyrical".
 
 Supports *low-latency, high-speed, arbitrary framerate, free-running* mode.  
 
-At time of writing, the official driver does not support "acquisition overlap".  
-Usage of the software trigger is [hard-coded](https://github.com/basler/pylon-ros-camera/blob/eb4ca3f/pylon_camera/include/pylon_camera/internal/impl/pylon_camera_dart.hpp#L94), effectively halving the maximum frame-rate.
+At time of writing, the official driver implements free-running mode since [465d0eb](https://github.com/basler/pylon-ros-camera/commit/465d0eb8bf63bf26d6c33c89d971c1d82c445466), 
+alas it does not support "acquisition overlap", effectively halving the maximum frame-rate.
 
 Some background information and discussion:
 

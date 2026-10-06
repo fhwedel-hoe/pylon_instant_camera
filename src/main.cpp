@@ -173,7 +173,7 @@ public:
             RCLCPP_INFO(this->get_logger(), "Input pixel type is bayer.");
         }
         RCLCPP_INFO(this->get_logger(), "Output topic name is [%s].", publish_topic.c_str());
-        image_publisher = image_transport::create_camera_publisher(this, publish_topic.c_str());
+        image_publisher = image_transport::create_camera_publisher(*this, publish_topic.c_str(), rclcpp::QoS(1));
         
         // log some information
         RCLCPP_INFO(
